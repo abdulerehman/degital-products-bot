@@ -3,10 +3,10 @@ from telebot import types
 import requests
 import json
 
-
+ADMIN_CHAT_ID = "1045530860"
 KEY = "6852207591:AAH9CEoxLGFmo_OhwXK2ai-rgPHPEvXqYrw"
 API = "http://127.0.0.1:8000/"
-headers = {'Content-Type': 'application/json'}
+headers = {'Content-Type': 'application/json', "Authorizations":"ttg45"}
 
 waiting_message = " لقد استقبلنا طلبك سوف يتم اضافتك في البوت في دقائق قليله من طرف الادمن شكرا على انتظارك 🥰"
 signup_button = 'سجل نفسك 📋'
@@ -19,11 +19,18 @@ welcome_message_2 = "• اهلأ بك عزيزي التاجر {name} 👋🏼 .
 
 balance_btn = "💰 رصيدي"
 products_btn = "🛒 العروض التي يقدمها البوت"
-ask_for_balance_btn = "💵 شحن حسابي "
+ask_for_balance_btn = "💵 شحن حسابي"
 contact_us_btn = "☎️ تواصل معنا"
 history_btn = "📋 تعاملاتي"
 buy_btn = "شراء"
+back_btn = "رجوع"
 
+admin_msg = """
+الزبون: {user} 
+إشترى المنتوج: {pack} 
+بسعر : {price}
+الآن
+"""
 history_msg = """
 🌀 مرحباً بك في قسم معلومات حسابك ببوت المتجر! 🌀
 
@@ -75,9 +82,17 @@ success_msg = """
 {code}
 """
 
+ask_for_balance_msg = """
+تريد شحن حسابك لشراء منتجاتنا تواصلوا معنا هنا: 
+☎️ رقم الهاتف 0794909201
+📱واتساب 213794909201+
+✉️ تيليڨرام Skilled04@
+"""
+
 error_msg = "رصيدك غير كاف"
 
 bot = telebot.TeleBot(KEY, parse_mode=None)
+
 
 class ProductsState:
     def __init__(self) -> None:
@@ -135,25 +150,25 @@ def signup(data):
     return response.json()
 
 def get_details(id):
-    response = requests.get(API + f"user/details/{id}")
+    response = requests.get(API + f"user/details/{id}", headers=headers)
     return response.json()
 
 
 def get_products():
-    response = requests.get(API + f"products/list")
+    response = requests.get(API + f"products/list", headers=headers)
     return response.json()
 
 def get_order_details(id):
-    response = requests.get(API + f"products/order/details/{id}")
+    response = requests.get(API + f"products/order/details/{id}", headers=headers)
     return response.json()
 
 
 def get_packs(id):
-    response = requests.get(API + f"products/pack/{id}")
+    response = requests.get(API + f"products/pack/{id}", headers=headers)
     return response.json()
 
 def buy(data):
-    response = requests.post(API + f"products/buy", data=stringify(data))
+    response = requests.post(API + f"products/buy", data=stringify(data), headers=headers)
     return response.json()
 
 
@@ -164,6 +179,7 @@ def loads(data):
     return json.loads(data)
 
 @bot.message_handler(func=lambda message: message.text.lower() == cancel_button)
+@bot.message_handler(func=lambda message: message.text.lower() == back_btn)
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     response = get_details(message.from_user.id)
@@ -185,7 +201,7 @@ def send_welcome(message):
         bot.send_message(
             message.chat.id, 
             welcome_message_2.format(
-                pk=response.get('pk'),
+                pk=message.from_user.id,
                 name=response.get('full_name'),
                 balance=response.get('balance')
                 ), 
@@ -207,24 +223,26 @@ def get_full_name(message):
 
     user_id = message.from_user.id
     username = message.from_user.username
+    chat_id = message.chat.id
     bot.send_message(message.chat.id, full_name_message, reply_markup=markup)
-    bot.register_next_step_handler(message,get_phone_number, data={"tg_username": username, "tg_id":user_id})
+    bot.register_next_step_handler(message,get_phone_number, data={"tg_username": username, "tg_id":user_id, "chat_id": chat_id})
 
 
 def get_phone_number(message, data):
-    data['full_name'] = message.text
-    bot.send_message(message.chat.id, phone_number_message)
-    bot.register_next_step_handler(message, send_waiting_message, data=data)
+    if message.text != cancel_button:
+        data['full_name'] = message.text
+        bot.send_message(message.chat.id, phone_number_message)
+        bot.register_next_step_handler(message, send_waiting_message, data=data)
 
 
 def send_waiting_message(message, data):
-    data['phone_number'] = message.text
-    signup(data)
-    bot.send_message(message.chat.id, waiting_message)
+    if message.text != cancel_button:
+        data['phone_number'] = message.text
+        signup(data)
+        bot.send_message(message.chat.id, waiting_message)
 
 # End Signup Steps
 
-ask_for_balance_btn
 
 @bot.message_handler(func=lambda message: message.text.lower() == balance_btn)
 def get_full_name(message):
@@ -241,11 +259,101 @@ def get_full_name(message):
 def get_full_name(message):
     bot.send_message(message.chat.id, contact_us_msg)
 
-
-
 @bot.message_handler(func=lambda message: message.text.lower() == products_btn)
 def product_list(message):
     
+    resposne = get_products()
+    markup = types.ReplyKeyboardMarkup(row_width=2, one_time_keyboard=True)
+    resposne = json.loads(resposne)
+    arr = []
+    product_state.clear()
+    
+    for product in resposne:
+        if len(arr) == 1:
+            arr.append(types.InlineKeyboardButton(
+                product['fields']["title"], 
+                ))
+            markup.add(arr[0], arr[1])
+            arr = []
+        elif len(arr) == 0:
+            arr.append(types.InlineKeyboardButton(product['fields']["title"]))
+        product_state.add({"title": product['fields']["title"], "id": product['pk'] })
+    
+    if len(arr) == 1:
+        markup.add(types.InlineKeyboardButton(product['fields']["title"]))
+    markup.add(
+        types.InlineKeyboardButton(text=back_btn),
+    )
+    bot.send_message(message.chat.id, products_msg, reply_markup=markup)
+
+
+
+@bot.message_handler(func=lambda message: product_state.check(message.text))
+def pack_list(message):
+    pack_id = product_state.selected_product["id"]
+    resposne = get_packs(pack_id)
+    markup = types.InlineKeyboardMarkup(row_width=3)
+    markup.add(
+        types.InlineKeyboardButton(text="السعر", callback_data="hey2"),
+        types.InlineKeyboardButton(text="الاسم", callback_data="hey1"),
+        types.InlineKeyboardButton(text="التوفر", callback_data="hey"),
+        )
+    for pack in resposne:
+        data = f"order_details+{pack['id']}" 
+        markup.add(
+            types.InlineKeyboardButton(text=pack["price"], callback_data=data),
+            types.InlineKeyboardButton(text=pack["name"], callback_data=data),
+            types.InlineKeyboardButton(text=pack["count"], callback_data=data),
+            )
+    markup.add(
+        types.InlineKeyboardButton(text="رجوع", callback_data="product_list"),
+    )
+    markup = markup
+    bot.send_message(message.chat.id, packs_msg, reply_markup=markup)
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def handler(call):
+    func = call.data.split("+")[0]
+    if func == 'order_details':
+        id = call.data.split("+")[1]
+        order_details(call.message, id)
+        return
+    elif func == "product_list":
+        pack_state.selected_pack = None
+        product_list(call.message)
+
+
+def order_details(message, id):
+    markup = types.ReplyKeyboardMarkup(row_width=2)
+    resposne = get_order_details(id)
+    pack_state.selected_pack = id
+    btns = [
+        types.InlineKeyboardButton(cancel_button),
+        types.InlineKeyboardButton(buy_btn),
+    ]
+
+    if resposne["count"] == 0:
+        bot.send_message(message.chat.id,"عملية شراء غير ممكنة لعدم توفر المنتوج سوف يتم تعبئته واعلامكم")
+        pack_list(message)
+    else:
+        markup.add(btns[0], btns[1])
+        reply = buy_msg.format(
+            pack=resposne["title"], 
+            description=resposne["description"],
+            count=resposne["count"],
+            price=resposne["price"]
+        )
+        bot.send_message(message.chat.id, reply, reply_markup=markup)
+
+
+@bot.message_handler(func=lambda message: message.text == buy_btn)
+def get_code(message):
+    user_id = message.from_user.id
+    resposne = buy({
+        "pack_id":pack_state.selected_pack,
+        "tg_id": user_id
+    })
     resposne = get_products()
     markup = types.ReplyKeyboardMarkup(row_width=2)
     resposne = json.loads(resposne)
@@ -265,79 +373,26 @@ def product_list(message):
     
     if len(arr) == 1:
         markup.add(types.InlineKeyboardButton(product['fields']["title"]))
-    
-    bot.send_message(message.chat.id, products_msg, reply_markup=markup)
-
-
-
-@bot.message_handler(func=lambda message: product_state.check(message.text))
-def pack_list(message):
-    
-    pack_id = product_state.selected_product["id"]
-    resposne = get_packs(pack_id)
-    markup = types.ReplyKeyboardMarkup(row_width=2)
-    resposne = json.loads(resposne)
-    arr = []
-    pack_state.clear()
-
-    for pack in resposne:
-        if len(arr) == 0:
-            arr.append(types.InlineKeyboardButton(pack['fields']["name"]))
-        elif len(arr) == 1:
-            arr.append(types.InlineKeyboardButton(pack['fields']["name"]))
-            markup.add(arr[0], arr[1])
-            arr = []
-        pack_state.add({"title":pack['fields']["name"], "id": pack['pk']})
-
-    if len(arr) == 1:
-        markup.add(types.InlineKeyboardButton(pack['fields']["name"]))
-    
-    bot.send_message(message.chat.id, packs_msg, reply_markup=markup)
-
-
-#pack_id = product_state.selected_product["id"]
-#tg_id = message.from_user.id
-
-@bot.message_handler(func=lambda message: pack_state.check(message.text))
-def order_details(message):
-    markup = types.ReplyKeyboardMarkup(row_width=2)
-    resposne = get_order_details(pack_state.selected_pack["id"])
-    btns = [
-        types.InlineKeyboardButton(cancel_button),
-        types.InlineKeyboardButton(buy_btn),
-    ]
-
-    if resposne["count"] == 0:
-        markup.add(btns[0])
-    else:
-        markup.add(btns[0], btns[1])
-
-    reply = buy_msg.format(
-        pack=resposne["title"], 
-        description=resposne["description"],
-        count=resposne["count"],
-        price=resposne["price"]
+    markup.add(
+        types.InlineKeyboardButton(text=back_btn),
     )
-    bot.send_message(message.chat.id, reply, reply_markup=markup)
-
-
-@bot.message_handler(func=lambda message: message.text == buy_btn)
-def get_code(message):
-    user_id = message.from_user.id
-    resposne = buy({
-        "pack_id":pack_state.selected_pack["id"],
-        "tg_id": user_id
-    })
-    markup = types.ReplyKeyboardMarkup(row_width=2)
-    markup.add(types.InlineKeyboardButton(cancel_button))
     try:
         bot.send_message(message.chat.id, success_msg.format(
             code=resposne["code"],
             price=resposne["price"]
         ), reply_markup=markup)
+        bot.send_message(ADMIN_CHAT_ID, admin_msg.format(
+            pack=resposne["pack"],
+            user=resposne["user"],
+            price=resposne["price"]
+        ))
     except KeyError:
         bot.send_message(message.chat.id, error_msg, reply_markup=markup)
+    product_list(message, False)
 
+@bot.message_handler(func=lambda message: message.text == ask_for_balance_btn)
+def ask_for_balance(message):
+    bot.send_message(message.chat.id, ask_for_balance_msg)
 
 
 print("--------- Bot is Running 📋 --------")
